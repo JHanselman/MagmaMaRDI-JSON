@@ -305,6 +305,17 @@ function load_array(s, params)
   return load_node(f, s);
 end function;
 
+
+function load_type_params_seqenum(s)
+  T := decode_type(s);
+  serialize_params := get("serialize_params");
+  if serialize_params[T] and "params" in Keys(s`obj) then
+    params := load_params_node(s);
+    return [T, params];
+  end if;
+  return T;
+end function;
+
 // ** Basic ring elements **
 
 function load_data_z_elt(s)
@@ -547,6 +558,8 @@ load_obj_overloader[RngMPolElt] := load_polynomial;
 load_obj_overloader[ModMatRng] := load_matrix_space;
 load_obj_overloader[ModMatRngElt] := load_matrix;
 
+load_type_params_overloader[SeqEnum] := load_type_params_seqenum;
+load_type_params_overloader[RngMPolElt] := load_type_params_ring_mat_elt;
 load_type_params_overloader[RngMPolElt] := load_type_params_ring_mat_elt;
 load_type_params_overloader[RngUPolElt] := load_type_params_ring_mat_elt;
 load_type_params_overloader[FldFinElt] := load_type_params_ring_mat_elt;
