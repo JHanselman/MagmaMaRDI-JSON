@@ -1,0 +1,1 @@
+{"_ns":{"Oscar":["https://github.com/oscar-system/Oscar.jl","1.0.2"]},"_type":"QQFieldElem","data":"3//5"}
