@@ -23,7 +23,7 @@ refs_key := "_refs";
 
 //Define global variables
 
-get, set := NewEnv(["encode_type", "reverse_type_map", "serialize_params", "serialize_id", "id_to_obj", "is_singleton", "save_object", "save_type_params", "load_object", "load_type_params"]);
+get, set := NewEnv(["encode_type", "reverse_type_map", "serialize_params", "serialize_id", "id_to_obj", "is_singleton", "save_object", "save_type_params", "load_object", "type_params"]);
 
 set("encode_type", AssociativeArray());
 set("reverse_type_map", AssociativeArray());
@@ -34,7 +34,7 @@ set("is_singleton", AssociativeArray());
 set("save_object", AssociativeArray());
 set("save_type_params", AssociativeArray());
 set("load_object", AssociativeArray());
-set("load_type_params", AssociativeArray());
+set("type_params", AssociativeArray());
 
 
 // Setup all types supported by the serializer/deserializer
@@ -46,7 +46,7 @@ L:=[];
 L cat:= [[* "ZZRing", RngInt, false, false, true*], [* "QQField", FldRat, false, false, true*], [*"PolyRing", RngUPol, false, true, false*], [*"MPolyRing", RngMPol, false, true, false *]];
 
 //Fields
-L cat:= [[* "FqField", FldFin, false, true, false*]];
+L cat:= [[* "FiniteField", FldFin, false, true, false*]];
 
 //Matrix spaces
 //TODO: This is going to cause problems
@@ -63,6 +63,9 @@ L cat:= [[* "PolyRingElem", RngUPolElt, true, false, false *], [* "MPolyRingElem
 
 //Field elements
 L cat:= [[* "FqFieldElem", FldFinElt, true, false, false*]];
+
+//Field elements
+L cat:= [[* "EllipticCurve", CrvEll, false, true, false*]];
 
 //Matrices
 //TODO: This is going to cause problems. Currently putting ModMatRngElt last because it seems the most general. Maybe split reverse_type_map.

@@ -22,6 +22,31 @@ intrinsic SerializerState(new_level::BoolElt, uuids::SeqEnum, io::IO, key::MonSt
   return S;
 end intrinsic;
 
+//Define TypeParam object?
+
+declare type TypeParam;
+declare attributes TypeParam: type, params;
+
+intrinsic Print(X::TypeParam)
+{Print X}
+if assigned X`params then
+  print "TypeParam object", X`type,",",X`params;
+else
+  print "TypeParam object", X`type, ", undefined";
+end if;
+end intrinsic;
+
+intrinsic CreateTypeParam(T::Cat) -> TypeParam
+{Initialize TypeParam}
+  TP := New(TypeParam);
+  TP`type := T;
+  return TP;
+end intrinsic;
+
+procedure set_params(T, S)
+  T`params := S;
+end procedure;
+
 //Serialization info
 
 function serialization_version_info(obj)
@@ -33,7 +58,7 @@ end function;
 
 function get_serialization_version()
 A := AssociativeArray();
-A["Oscar"] :=  ["https://github.com/oscar-system/Oscar.jl", "1.0.2"];
+A["Oscar"] :=  ["https://github.com/oscar-system/Oscar.jl", "1.7.0"];
 return A;
 end function;
 
@@ -84,17 +109,84 @@ procedure set_key(s, key)
 end procedure;
 
 
+
+function type_params(obj)
+  T := Type(obj);
+  type_param := get("type_params");
+  if T in Keys(type_param) then
+    return type_param[T](obj);
+  else
+    return CreateTypeParam(T);
+  end if;
+end function;
+
+function type_param_ringmat(obj)
+  T := Type(obj);
+  S := BaseRing(obj);
+  TP := CreateTypeParam(T);
+  set_params(TP, S);
+  return TP;
+end function;
+
+function type_param_ringmat_elt(obj)
+  T := Type(obj);
+  S := Parent(obj);
+  TP := CreateTypeParam(T);
+  set_params(TP, S);
+  return TP;
+end function;
+
+function type_param_FF(obj)
+  T := Type(obj);
+  TP := CreateTypeParam(T);
+  if Degree(obj) eq 1 then
+    return TP;
+  else 
+    S := Parent(DefiningPolynomial((obj)));
+    set_params(TP, S);
+    return TP;
+  end if;
+end function;
+
+//Might have problems with empty seqenum
+
+function type_param_seqenum(obj)
+  T := Type(obj);
+  S := type_params(obj[1]);
+  TP := CreateTypeParam(T);
+  set_params(TP, S);
+  return TP;
+end function;
+
+type_params_overloader := get("type_params");
+type_params_overloader[RngUPol] := type_param_ringmat;
+type_params_overloader[RngMPol] := type_param_ringmat;
+type_params_overloader[ModMatFld] := type_param_ringmat;
+type_params_overloader[ModMatRng] :=  type_param_ringmat;
+type_params_overloader[ModMatFld] := type_param_ringmat;
+type_params_overloader[RngMPolElt] := type_param_ringmat_elt;
+type_params_overloader[RngUPolElt] := type_param_ringmat_elt;
+type_params_overloader[FldFinElt] := type_param_ringmat_elt;
+type_params_overloader[ModMatFldElt] := type_param_ringmat_elt;
+type_params_overloader[ModMatRngElt] := type_param_ringmat_elt;
+type_params_overloader[FldFinElt] := type_param_ringmat_elt;
+type_params_overloader[Mtrx] := type_param_ringmat_elt;
+type_params_overloader[SeqEnum] := type_param_seqenum;
+type_params_overloader[FldFin] := type_param_FF;
+set("type_params", type_params_overloader);
+
+
 procedure save_object(s, x)
   T := Type(x);
   f:= get("save_object")[T];
   f(s,x);
 end procedure;
 
-procedure save_type_params(s, x)
-  T := Type(x);
-  f:= get("save_type_params")[T];
-  f(s,x);
-end procedure;
+//procedure save_type_params(s, x)
+ // T := Type(x);
+ // f:= get("save_type_params")[T];
+ // f(s,x);
+//end procedure;
 
 procedure save_object_with_key(s , obj, key)
   set_key(s, key);
@@ -112,15 +204,33 @@ procedure save_header(s, dict, key)
   end_dict_node(s);
 end procedure;
 
+forward save_type_params_with_key;
+forward save_typed_object_with_key;
 
-procedure save_type_params(s, obj)
-  T := Type(obj);
-  get("save_type_params")[T](s, obj);
+//Case where S is nothing.
+procedure save_type_params(s, tp)
+  T := tp`type;
+  encode_type:=get("encode_type");
+  if not assigned tp`params then
+    save_object(s, encode_type[T]);
+  else
+     begin_dict_node(s);
+        save_object_with_key(s, encode_type[T], "name");
+        params := tp`params;
+        if Type(params) eq TypeParam then
+          save_type_params_with_key(s, params, "params");
+        elif Type(params) eq Assoc then
+          error "Not implemented yet.";
+        else
+          save_typed_object_with_key(s, params, "params");
+        end if;
+     end_dict_node(s);
+  end if;
 end procedure;
 
 procedure save_type_params_with_key(s, obj, key)
   set_key(s, key);
-  save_type_params(s, obj);
+  save_type_params(s, type_params(obj));
 end procedure;
 
 function save_as_ref(s, obj) 
@@ -152,13 +262,10 @@ procedure save_typed_object(s, x)
   serialize_params := get("serialize_params");
   is_singleton := get("is_singleton");
   T:=Type(x);
-  if serialize_params[T] then
-    save_type_params_with_key(s, x, type_key);
-    save_object_with_key(s, x, "data");
-  elif is_singleton[T] then
+  if is_singleton[T] then
     save_object_with_key(s, encode_type[T], type_key);
   else
-    save_object_with_key(s, encode_type[T], type_key);
+    save_type_params_with_key(s, x, type_key);
     save_object_with_key(s, x, "data");
   end if;
 end procedure;
@@ -231,8 +338,7 @@ end procedure;
 
 procedure save_poly_ring(s, obj)
   begin_dict_node(s);
-    save_typed_object_with_key(s, BaseRing(obj), "base_ring");
-    save_object_with_key(s, Names(obj), "symbols"); 
+  save_object_with_key(s, Names(obj), "symbols"); 
   end_dict_node(s);
 end procedure;
 
@@ -270,7 +376,6 @@ end procedure;
 
 procedure save_mat_space(s, obj)
   begin_dict_node(s);
-    save_typed_object_with_key(s, BaseRing(obj), "base_ring");
     M := Zero(obj);
     save_object_with_key(s, Ncols(M), "ncols");
     save_object_with_key(s, Nrows(M), "nrows");
@@ -295,9 +400,7 @@ procedure save_Fq(s, obj)
   if Degree(obj) eq 1 then
     save_object(s, Sprint(Characteristic(obj)));
   else
-    begin_dict_node(s);
-      save_typed_object(s, DefiningPolynomial(obj));
-    end_dict_node(s);
+      save_object(s, DefiningPolynomial(obj));
   end if;
 end procedure;
 
@@ -314,7 +417,15 @@ procedure save_Fq_elt(s, obj)
   end if;
 end procedure;
 
-
+// ** Elliptic Curves **
+//Probably works. Is untested.
+/*procedure save_elliptic_curve(s, obj)
+  begin_dict_node(s);
+    save_typed_object_with_key(s, BaseRing(obj), "base_ring");
+    save_object_with_key(s, aInvariants(obj), "a_invariants"); 
+  end_dict_node(s);
+end procedure;
+*/
 //Overloading the save function 
 
 save_obj_overloader[MonStgElt] := save_data_basic;
@@ -335,6 +446,7 @@ save_obj_overloader[AlgMat] := save_alg_mat;
 save_obj_overloader[ModMatFldElt] := save_mtrx;
 save_obj_overloader[ModMatRngElt] := save_mtrx;
 save_obj_overloader[Mtrx] := save_mtrx;
+//save_obj_overloader[CrvEll] := save_elliptic_curve;
 
 set("save_object", save_obj_overloader);
 
@@ -382,6 +494,8 @@ save_type_params_overloader[Mtrx] := save_type_param_ringmat_elt;
 save_type_params_overloader[SeqEnum] := save_type_param_seqenum;
 
 set("save_type_params", save_type_params_overloader);
+
+
 
 // Define save function
 

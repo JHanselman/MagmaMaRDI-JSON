@@ -1,5 +1,5 @@
 import "Globals.m":type_key, refs_key, get, set; 
-import "Serializer.m":set_key; 
+import "Serializer.m":set_key, set_params; 
 
 //Define DeserializerState object
 
@@ -107,31 +107,27 @@ end function;
 
 //Generic load functions
 
-function load_object(s, T)
+function load_object(s, tp)
+  T:= tp`type;
   f:= get("load_object")[T];
-  return f(s);
+  //TODO: Hack for finite field case. Redesign this later.
+  if T eq FldFin then
+    return f(s, tp);
+  elif assigned tp`params then
+    return f(s, tp`params);
+  else
+    return f(s);
+  end if;
 end function;
 
-function load_object_with_params(s, T, params)
-  f:= get("load_object")[T];
-  return f(s, params);
-end function;
-
-function load_object_with_key(s, T, key)
+function load_object_with_key(s, tp, key)
   g := function(x)
-    return load_object(s, T);
+    return load_object(s, tp);
   end function;
   return load_node(g, s : key := key);
 end function;
 
-function load_object_with_params_and_key(s, T, params, key)
-  g:= function(x)
-    return load_object_with_params(s, T, params);
-  end function;
-  return load_node(g, s: key := key);
-end function;
-
-function load_type_params(s, T)
+function load_type_params2(s, T)
   f:= get("load_type_params")[T];
   return f(s);
 end function;
@@ -149,6 +145,9 @@ function load_array_node(f, s: key:="")
   return load_node(g, s: key := "");
 end function;
 
+forward load_type_params;
+forward load_type_params_with_key;
+
 function load_params_node(s)
   T := decode_type(s);
   f := function(x)
@@ -160,27 +159,83 @@ end function;
 function load_typed_object(s: override_params :="")
   T := decode_type(s);
   //TODO: This is hacked together
+
+  if Type(s`obj) eq MonStgElt and is_uuid(s`obj) then
+    return load_ref(s);
+  else 
+    tp := load_type_params_with_key(s, T, type_key);
+  end if;
+
   if get("is_singleton")[T] then
     if T eq FldRat then
       return Rationals();
     elif T eq RngInt then
       return Integers();
     end if;
-  elif get("serialize_params")[T] then
-    f := function(x)
-      return load_params_node(s);
-    end function;
-    params := load_node(f, s : key := type_key); 
-    g := function(x)
-      return load_object_with_params(s, T, params);
-    end function;
-    return load_node(g, s: key :="data");
   else
     g := function(x)
-      return load_object(s, T);
+      return load_object(s, tp);
     end function;
     return load_node(g, s: key :="data");
   end if;
+end function;
+
+function load_type_params(s, T)
+  if Type(s`obj) eq MonStgElt then
+    if is_uuid(s`obj) then
+      tp := CreateTypeParam(T);
+      set_params(tp, load_ref(s));
+      return tp;
+    else
+    //Should return nothing as a second variable How to deal with this?
+      return CreateTypeParam(T);
+    end if;
+  else
+    if "params" in Keys(s`obj) then
+      f := function(obj)
+        if Type(obj) eq MonStgElt or "params" in Keys(s`obj) then
+          U := decode_type(s);
+          if get("is_singleton")[U] then
+            if T eq FldRat then
+              return CreateTypeParam(Rationals());
+            elif T eq RngInt then
+              return CreateTypeParam(Integers());
+            end if;
+          else
+            params:= load_type_params(s, U)`params;
+          end if;
+        elif not (type_key in Keys(s`obj)) then
+          params:= AssociativeArray();
+         
+          for k -> v in obj do
+            g:= function(obj)
+              U := decode_type(s);
+              if Type(obj) eq MonStgElt and not(is_uuid(obj)) then
+              end if;
+            end function;
+            params[k] := load_node(g, s: key:=k);
+          end for;
+        else
+          params := load_typed_object(s);
+        end if;
+        tp := CreateTypeParam(T);
+        set_params(tp, params);
+        return tp;
+      end function;
+      return load_node(f, s: key := "params");
+    else 
+      tp := CreateTypeParam(T);
+      set_params(tp, load_typed_object(s));
+      return tp;
+    end if;
+  end if;
+end function;
+
+function load_type_params_with_key(s, T, key)
+  g := function(x)
+    return load_type_params(s, T);
+  end function;
+  return load_node(g, s : key := key);
 end function;
 
 function load_typed_object_with_key(s, key :override_params := "")
@@ -213,7 +268,6 @@ end function;
 // ** Overloading load function **
 
 load_obj_overloader := get("load_object");
-load_type_params_overloader := get("load_type_params");
 
 // Helper function for objects with lots of parents
 function get_parents(parent_ring)
@@ -246,9 +300,9 @@ end function;
 
 // ** Arrays and Lists **
 
-function load_seq_enum_tuple(s, params)
+function load_seq_enum_tuple(s, tp)
 
-  T := params[1];
+  T := tp`type;
   f := function(v)
     len := #v;
     if len eq 0 then
@@ -257,7 +311,7 @@ function load_seq_enum_tuple(s, params)
       loaded_v := [];
       for i in [1..len] do
         g := function(loaded_v)
-          return load_object_with_params(s, T, params[2]);
+          return load_object(s, tp);
         end function;
         Append(~loaded_v, load_node(g, s: key:=i));
       end for;
@@ -267,15 +321,8 @@ function load_seq_enum_tuple(s, params)
   return load_node(f, s);
 end function;
 
-function load_seq_enum(s, params)
-  if Type(params) ne Cat then
-    if #params eq 2 then
-      return load_seq_enum_tuple(s, params);
-    else
-      Error("parameters for SeqEnum not a type or a tuple.");
-    end if;
-  end if;
-  T:= params;
+function load_seq_enum(s, tp)
+  T:= tp`type;
   serialize_id := get("serialize_id");
   g:= function(v)
     if serialize_id[T] then
@@ -286,7 +333,7 @@ function load_seq_enum(s, params)
     else
       loaded_v := [];
       for i in [1..#v] do
-        Append(~loaded_v, load_object_with_key(s, params, i));
+        Append(~loaded_v, load_object_with_key(s, tp, i));
       end for;
     end if;
     return loaded_v;
@@ -300,7 +347,9 @@ function load_array(s, params)
     if len eq 0 then
       return [];
     end if;
-    S := [load_object_with_params_and_key(s, SeqEnum, params, i) : i in [1..len]];
+    tp := CreateTypeParam(SeqEnum);
+    set_params(tp, params);
+    S := [load_object_with_key(s, tp, i) : i in [1..len]];
     return S;
     end function;
   return load_node(f, s);
@@ -325,21 +374,19 @@ end function;
 
 // ** Polynomial Rings **
 
-function load_type_params_ring_mat_elt(s)
-  return load_typed_object(s);
-end function;
-
-function load_poly_ring(s)
-  base_ring := load_typed_object_with_key(s, "base_ring");
-  symbols := load_object_with_params_and_key(s, SeqEnum, MonStgElt, "symbols");
+function load_poly_ring(s, base_ring)
+  tp := CreateTypeParam(SeqEnum);
+  set_params(tp, CreateTypeParam(MonStgElt));
+  symbols := load_object_with_key(s, tp, "symbols");
   R := PolynomialRing(base_ring, #symbols);
   AssignNames(~R, symbols);
   return R;
 end function;
 
-function load_univ_poly_ring(s)
-  base_ring := load_typed_object_with_key(s, "base_ring");
-  symbols := load_object_with_params_and_key(s, SeqEnum, MonStgElt, "symbols");
+function load_univ_poly_ring(s, base_ring)
+  tp := CreateTypeParam(SeqEnum);
+  set_params(tp, CreateTypeParam(MonStgElt));
+  symbols := load_object_with_key(s, tp, "symbols");
   R := PolynomialRing(base_ring);
   AssignNames(~R, symbols);
   return R;
@@ -347,9 +394,8 @@ end function;
 
 // ** Elements of polynomial rings **
 
-function load_univ_polynomial_help(s, parents)
+function load_univ_polynomial(s, parent_ring)
   serialize_with_params := get("serialize_params");
-  parent_ring := parents[#parents];
   
   f:= function(terms)
     if #terms eq 0 then
@@ -359,7 +405,7 @@ function load_univ_polynomial_help(s, parents)
     exponents :=[];
     for i in [1..#terms] do
       g := function(x)
-        return load_object_with_key(s, RngIntElt, 1);
+        return load_object_with_key(s, CreateTypeParam(RngIntElt), 1);
       end function;
       e := load_node(g, s: key := i);
       Append(~exponents, e);
@@ -373,23 +419,15 @@ function load_univ_polynomial_help(s, parents)
     for i in [1..#exponents] do
       g := function(x)
         c := base!0;
-        if serialize_with_params[coeff_type] then
-          if #parents eq 1 then
+        f2 := function(x)
+          tp := CreateTypeParam(coeff_type);
+          if serialize_with_params[coeff_type] then
             params := base;
-          else
-            params := parents[1..#parents-1];
+            set_params(tp, params);
           end if;
-        
-          f2 := function(x)
-            return load_object_with_params(s, coeff_type, params);
-          end function;
-          c := load_node(f2, s: key := 2);
-        else
-          f2 := function(x)
-            return load_object(s, coeff_type);
-          end function;
-          c := load_node(f2, s: key := 2);
-        end if;
+            return load_object(s, tp);
+        end function;
+        c := load_node(f2, s: key := 2);
         return c * parent_ring.1^exponents[i]; 
       end function;
       
@@ -401,19 +439,11 @@ function load_univ_polynomial_help(s, parents)
   return load_node(f, s);
 end function;
 
-function load_univ_polynomial(s, parent_rings)
-  if Type(parent_rings) ne List then 
-    parent_rings := get_parents(parent_rings);
-  end if;
-  return load_univ_polynomial_help(s, parent_rings);
-end function;
 
-function load_polynomial_help(s, parents)
+function load_polynomial(s, parent_ring)
   serialize_with_params := get("serialize_params");
-  
   g:= function(terms)
     exponents := [term[1] : term in terms];
-    parent_ring := parents[#parents];
     n := Rank(parent_ring);
     base := BaseRing(parent_ring);
     polynomial := parent_ring!0;
@@ -422,23 +452,15 @@ function load_polynomial_help(s, parents)
     for i in [1..#exponents] do
       f := function(x)
         c := base!0;
-        if serialize_with_params[coeff_type] then
-          if #parents eq 1 then
+        f2 := function(x)
+          tp := CreateTypeParam(coeff_type);
+          if serialize_with_params[coeff_type] then
             params := base;
-          else
-            params := parents[1..#parents-1];
+            set_params(tp, params);
           end if;
-        
-          f2 := function(x)
-            return load_object_with_params(s, coeff_type, params);
-          end function;
+          return load_object(s, tp);
+        end function;
           c := load_node(f2, s: key := 2);
-        else
-          f2 := function(x)
-            return load_object(s, coeff_type);
-          end function;
-          c := load_node(f2, s: key := 2);
-        end if;
         e_int := [StringToInteger(x) : x in exponents[i]];
         return c * &*[parent_ring.j^e_int[j] : j in [1..n]]; 
       end function;
@@ -452,83 +474,60 @@ function load_polynomial_help(s, parents)
    
 end function;
 
-function load_polynomial(s, parent_rings)
-  if Type(parent_rings) ne List then 
-    parent_rings := get_parents(parent_rings);
-  end if;
-  return load_polynomial_help(s, parent_rings);
-end function;
-
 // ** Matrices **
 
-function load_matrix_space(s)
-  base_ring := load_typed_object_with_key(s, "base_ring");
-  ncols := load_object_with_key(s, RngIntElt, "ncols");
-  nrows := load_object_with_key(s, RngIntElt, "nrows");
+function load_matrix_space(s, base_ring)
+  ncols := load_object_with_key(s, CreateTypeParam(RngIntElt), "ncols");
+  nrows := load_object_with_key(s, CreateTypeParam(RngIntElt), "nrows");
   return RMatrixSpace(base_ring, nrows, ncols);
 end function;
 
-function load_matrix_help(s, parents)
-  parent := parents[#parents];
+function load_matrix(s, parent)
   base := BaseRing(parent);
   T := ElementType(base);
   serialize_with_params := get("serialize_params");
   
+  tp:= CreateTypeParam(T);
   if serialize_with_params[T] then
-    if #parents eq 1 then
-      params := base;
-    else
-      params := parents[1..#parents-1];
-    end if;
-   m := load_array(s, [* T, params *]);
-  else
-    m:= load_array(s, T);
+   params := base;
+   set_params(tp, params);
   end if;
+  m:= load_array(s, tp);
   return parent!m;
 end function;
 
-function load_matrix(s, parent_ring)
-  parents := get_parents(parent_ring);
-  return load_matrix_help(s, parents);
-end function;
 
 // ** Finite fields **
 
-function load_Fq(s)
+function load_Fq(s, tp)
+  if assigned tp`params then
+  pol_tp := CreateTypeParam(RngUPolElt);
+  set_params(pol_tp,tp`params);
+    def_pol := load_object(s, pol_tp);
+    R := Parent(def_pol);
+    F := BaseRing(R);
+    a, b := ext<F |def_pol>;
+    return a;
+  else
     f := function(node)
-    if Type(node) eq MonStgElt then
       order := StringToInteger(node);
       return FiniteField(order);
-    else
-      def_pol := load_typed_object(s);
-      R := Parent(def_pol);
-      F := BaseRing(R);
-      a, b := ext<F |def_pol>;
-      return a;
-    end if;
-  end function;
-  return load_node(f, s);
+    end function;
+    return load_node(f, s);
+  end if;
 end function;
 
 // ** Elements of finite fields **
 
-function load_Fq_elt(s, parents)
-  if Type(parents) eq List then 
-    n := #parents;
-    K := parents[n];
-    f:= function(x)
-      return K!(load_object_with_params(s, RngUPolElt, parents[1..n-1]));
-    end function;
-  elif Type(parents) eq FldFin and IsPrimeField(parents) then
-    f := function(str)
-      return parents!StringToInteger(str);
-    end function;
-    return load_node(f, s);
-  else
-    pol_ring := Parent(DefiningPolynomial(parents));
-    a := parents.1;
-    return Evaluate(load_object_with_params(s, RngUPolElt, pol_ring), a);
+function load_Fq_elt(s, parent)
+  if IsPrimeField(parent) then
+    return parent!StringToInteger(s`obj);
   end if;
+  pol_ring := Parent(DefiningPolynomial(parent));
+  a := parent.1;
+  tp := CreateTypeParam(RngUPolElt);
+  set_params(tp, pol_ring);
+  return Evaluate(load_object(s, tp), a);
 end function;
 
 
@@ -548,13 +547,7 @@ load_obj_overloader[RngMPolElt] := load_polynomial;
 load_obj_overloader[ModMatRng] := load_matrix_space;
 load_obj_overloader[ModMatRngElt] := load_matrix;
 
-load_type_params_overloader[RngMPolElt] := load_type_params_ring_mat_elt;
-load_type_params_overloader[RngUPolElt] := load_type_params_ring_mat_elt;
-load_type_params_overloader[FldFinElt] := load_type_params_ring_mat_elt;
-load_type_params_overloader[ModMatRngElt] := load_type_params_ring_mat_elt;
-
 set("load_object", load_obj_overloader);
-set("load_type_params", load_type_params_overloader);
 
 // Define load function
 
@@ -562,26 +555,7 @@ intrinsic load_mardi_json(path::MonStgElt) -> Any
 {}
   file := Open(path, "r");
   s := deserializer_open(file);
-  serialize_with_params := get("serialize_params");
-  
-  f := function(x)
-    return decode_type(s);
-  end function;
-  
-  T := load_node(f, s: key := type_key);
-  if serialize_with_params[T] then
-    f := function(x)
-      return load_params_node(s);
-    end function;
-    params := load_node(f, s: key:= type_key);
-    
-    f := function(x)
-      return load_object_with_params(s, T, params);
-    end function;
-    loaded := load_node(f, s: key := "data");
-  else 
-    loaded := load_typed_object(s);
-  end if;
+  loaded := load_typed_object(s);
   return loaded;
 end intrinsic;
 
