@@ -127,10 +127,6 @@ function load_object_with_key(s, tp, key)
   return load_node(g, s : key := key);
 end function;
 
-function load_type_params2(s, T)
-  f:= get("load_type_params")[T];
-  return f(s);
-end function;
 
 function load_array_node(f, s: key:="")
    g := function(s, array)
@@ -180,6 +176,22 @@ function load_typed_object(s: override_params :="")
   end if;
 end function;
 
+function load_type_array_params(s)
+  f:= function(obj)
+    T:= decode_type(s);
+    if Type(obj) eq MonStgElt then
+      if is_uuid(s`obj) then
+        return load_ref(s);
+      else
+        return T;
+      end if;
+    end if;
+    return load_type_params(s, T)`params;
+  end function;
+
+  return load_array_node(f, s);
+end function;
+
 function load_type_params(s, T)
   if Type(s`obj) eq MonStgElt then
     if is_uuid(s`obj) then
@@ -187,13 +199,14 @@ function load_type_params(s, T)
       set_params(tp, load_ref(s));
       return tp;
     else
-    //Should return nothing as a second variable How to deal with this?
       return CreateTypeParam(T);
     end if;
   else
     if "params" in Keys(s`obj) then
       f := function(obj)
-        if Type(obj) eq MonStgElt or "params" in Keys(s`obj) then
+        if Type(obj) eq SeqEnum then
+          params := load_type_array_params(s);
+        elif Type(obj) eq MonStgElt or "params" in Keys(s`obj) then
           U := decode_type(s);
           if get("is_singleton")[U] then
             if T eq FldRat then
@@ -202,7 +215,12 @@ function load_type_params(s, T)
               return CreateTypeParam(Integers());
             end if;
           else
-            params:= load_type_params(s, U)`params;
+            //Hack in case were looking for the subtype of a SeqEnum that doesn'y have parameters.
+            if T eq SeqEnum then
+              params := load_type_params(s, U);
+            else 
+              params:= load_type_params(s, U)`params;
+            end if;
           end if;
         elif not (type_key in Keys(s`obj)) then
           params:= AssociativeArray();
