@@ -8,3 +8,4 @@ Save and load:
 - ZZ, QQ and finite fields
 - Polynomial rings over all supported rings
 - Matrices over all supported rings
+- Arrays of objects
