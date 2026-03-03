@@ -230,7 +230,7 @@ end procedure;
 
 procedure save_type_params_with_key(s, obj, key)
   set_key(s, key);
-  save_type_params(s, type_params(obj));
+  save_type_params(s, obj);
 end procedure;
 
 function save_as_ref(s, obj) 
@@ -265,7 +265,7 @@ procedure save_typed_object(s, x)
   if is_singleton[T] then
     save_object_with_key(s, encode_type[T], type_key);
   else
-    save_type_params_with_key(s, x, type_key);
+    save_type_params_with_key(s, type_params(x), type_key);
     save_object_with_key(s, x, "data");
   end if;
 end procedure;
@@ -478,7 +478,7 @@ procedure save_type_param_seqenum(s, obj)
     save_object_with_key(s, encode_type[T], "name");
     
     if obj ne [] and serialize_params[Type(obj[1])] then
-      save_type_params_with_key(s, obj[1], "params");
+      save_type_params_with_key(s, type_params(obj[1]), "params");
     else
       save_object_with_key(s, encode_type[Type(obj[1])], "params");
     end if;

@@ -8,8 +8,9 @@ file5:= "Testfiles/save_test5.txt";
 file6:= "Testfiles/save_test6.txt";
 file7:= "Testfiles/save_test7.txt";
 file8:= "Testfiles/save_test8.txt";
-
-
+file9:= "Testfiles/save_test9.txt";
+file10:= "Testfiles/save_test10.txt";
+load_mardi_json(file10);
 R<x,y,z> := PolynomialRing(Rationals(), 3);
 p:= x^4*y^2 - 98*z^5 -23*x*y*z;
 save_mardi_json(file1, p);
@@ -44,6 +45,13 @@ K:= GF(11);
 c := K!3;
 save_mardi_json(file8, c);
 
+R<x> := PolynomialRing(Rationals());
+p:= x^4- 32*x + 12/5;
+q := x^2 - 1;
+save_mardi_json(file9, [p,q]);
+
+save_mardi_json(file10, [1,2]);
+
 load_mardi_json(file1);
 load_mardi_json(file2);
 load_mardi_json(file3);
@@ -52,3 +60,4 @@ load_mardi_json(file5);
 load_mardi_json(file6);
 load_mardi_json(file7);
 load_mardi_json(file8);
+load_mardi_json(file9);
