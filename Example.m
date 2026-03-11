@@ -10,7 +10,15 @@ file7:= "Testfiles/save_test7.txt";
 file8:= "Testfiles/save_test8.txt";
 file9:= "Testfiles/save_test9.txt";
 file10:= "Testfiles/save_test10.txt";
-load_mardi_json(file10);
+file11:= "Testfiles/save_test11.txt";
+file12:= "Testfiles/save_test12.txt";
+file13:= "Testfiles/save_test13.txt";
+file14:= "Testfiles/save_test14.txt";
+file15:= "Testfiles/save_test15.txt";
+file16:= "Testfiles/save_test16.txt";
+file17:= "Testfiles/save_test17.txt";
+file18:= "Testfiles/save_test18.txt";
+
 R<x,y,z> := PolynomialRing(Rationals(), 3);
 p:= x^4*y^2 - 98*z^5 -23*x*y*z;
 save_mardi_json(file1, p);
@@ -52,6 +60,46 @@ save_mardi_json(file9, [p,q]);
 
 save_mardi_json(file10, [1,2]);
 
+R<x> := PolynomialRing(Rationals());
+K<a> := NumberField(x^4+x^3+1);
+save_mardi_json(file11, K);
+save_mardi_json(file12, a^2-1);
+S<t> := PolynomialRing(K);
+L<b> := NumberField(t^2+31);
+save_mardi_json(file13, L);
+save_mardi_json(file14, b+8);
+
+
+CC<I>:= ComplexField(50);
+a:= Pi(CC);
+save_mardi_json(file15, CC);
+save_mardi_json(file16, a);
+
+R<x,y> := PolynomialRing(Rationals(),2);
+f := x^7 +2*x^3*y +y^3;
+X := RiemannSurface(f);
+tau := SmallPeriodMatrix(X);
+save_mardi_json(file17, tau);
+
+
+R<x> := PolynomialRing(Rationals());
+K<a> := NumberField(x^4+x^3+1);
+OK:= RingOfIntegers(K);
+save_mardi_json(file18, OK);
+
+AttachSpec("spec");
+file19:= "Testfiles/save_test19.txt";
+file20:= "Testfiles/save_test20.txt";
+R<x> := PolynomialRing(Rationals());
+K<a> := NumberField(x^4+x^3+1);
+OK:= RingOfIntegers(K);
+save_mardi_json(file19, OK!1);
+save_mardi_json(file20, OK*1);
+
+AttachSpec("spec");
+file19:= "Testfiles/save_test19.txt";
+load_mardi_json(file19);
+
 load_mardi_json(file1);
 load_mardi_json(file2);
 load_mardi_json(file3);
@@ -61,3 +109,12 @@ load_mardi_json(file6);
 load_mardi_json(file7);
 load_mardi_json(file8);
 load_mardi_json(file9);
+load_mardi_json(file10);
+load_mardi_json(file11);
+load_mardi_json(file12);
+load_mardi_json(file13);
+load_mardi_json(file14);
+load_mardi_json(file15);
+load_mardi_json(file16);
+load_mardi_json(file17);
+load_mardi_json(file18);

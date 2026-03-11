@@ -22,12 +22,24 @@ intrinsic SerializerState(new_level::BoolElt, uuids::SeqEnum, io::IO, key::MonSt
   return S;
 end intrinsic;
 
-//Define TypeParam object?
 
-declare type TypeParam;
-declare attributes TypeParam: type, params;
+declare type SerCat;
+declare attributes SerCat: type, encoding, serialize_params, serialize_with_id, is_singleton, params;
 
-intrinsic Print(X::TypeParam)
+intrinsic SerializationType(T:Cat) -> SerCat
+{Initialize SerCat}
+  ST := New(SerCat);
+  ST`type := T;
+  type_data := get("type_data")[T];
+
+  ST`serialize_params := type_data[2];
+  ST`serialize_with_id := type_data[3];
+  ST`is_singleton := type_data[4];
+
+  return ST;
+end intrinsic;
+
+intrinsic Print(X::SerCat)
 {Print X}
 if assigned X`params then
   print "TypeParam object", X`type,",",X`params;
@@ -36,12 +48,35 @@ else
 end if;
 end intrinsic;
 
-intrinsic CreateTypeParam(T::Cat) -> TypeParam
-{Initialize TypeParam}
-  TP := New(TypeParam);
-  TP`type := T;
-  return TP;
+
+intrinsic SerializationType(obj::Any) -> SerCat
+{Initialize SerCat}
+
+  ST := New(SerCat);
+  T:= Type(obj);
+  if Type(obj) eq Cat then
+    T:= obj;
+    type_data := get("type_data")[T];
+  else
+    type_data := get("type_data")[T];
+    if Type(type_data[1]) eq MonStgElt then
+      ST`encoding := type_data[1];
+      else
+      f := type_data[5];
+      ST`encoding := type_data[1][f(obj)];
+    end if;
+  end if;
+
+  
+  ST`type := T;
+  ST`serialize_params := type_data[2];
+  ST`serialize_with_id := type_data[3];
+  ST`is_singleton := type_data[4];
+
+  return ST;
 end intrinsic;
+
+
 
 procedure set_params(T, S)
   T`params := S;
@@ -108,85 +143,135 @@ procedure set_key(s, key)
   s`key := key;
 end procedure;
 
+function encode_type(x)
+  return x`encoding;
+end function;
 
+function serialize_params(x)
+  return x`serialize_params;
+end function;
+
+function serialize_id(x)
+  return x`serialize_with_id;
+end function;
+
+function is_singleton(x)
+  return x`is_singleton;
+end function;
 
 function type_params(obj)
-  T := Type(obj);
+  T := SerializationType(obj);
+  encoding := encode_type(T);
+  base_encoding:= Sprint(Type(obj));
   type_param := get("type_params");
-  if T in Keys(type_param) then
-    return type_param[T](obj);
+  //We check if there is a special way to handle type params based on the encoding.
+  //If not we use the default way specified by the type.
+  if encoding in Keys(type_param) then
+    return type_param[encoding](obj);
+  elif base_encoding in Keys(type_param) then
+    return type_param[base_encoding](obj);
   else
-    return CreateTypeParam(T);
+    return T;
   end if;
 end function;
 
 function type_param_ringmat(obj)
-  T := Type(obj);
+  T := SerializationType(obj);
   S := BaseRing(obj);
-  TP := CreateTypeParam(T);
-  set_params(TP, S);
-  return TP;
+  set_params(T, S);
+  return T;
 end function;
 
 function type_param_ringmat_elt(obj)
-  T := Type(obj);
+  T := SerializationType(obj);
   S := Parent(obj);
-  TP := CreateTypeParam(T);
-  set_params(TP, S);
-  return TP;
+  set_params(T, S);
+  return T;
 end function;
 
 function type_param_FF(obj)
-  T := Type(obj);
-  TP := CreateTypeParam(T);
+  T := SerializationType(obj);
   if Degree(obj) eq 1 then
-    return TP;
+    return T;
   else 
     S := Parent(DefiningPolynomial((obj)));
-    set_params(TP, S);
-    return TP;
+    set_params(T, S);
+    return T;
   end if;
 end function;
+
+function type_param_num_field(obj)
+  T := SerializationType(obj);
+  S := Parent(DefiningPolynomial((obj)));
+  set_params(T, S);
+  return T;
+end function;
+
+function type_param_order(obj)
+  T := SerializationType(obj);
+  S := NumberField(obj);
+  set_params(T, S);
+  return T;
+end function;
+
+function type_param_ideal(obj)
+  T := SerializationType(obj);
+  S := Order(obj);
+  set_params(T, S);
+  return T;
+end function;
+
 
 //Might have problems with empty seqenum
 
 function type_param_seqenum(obj)
-  T := Type(obj);
+  T := SerializationType(obj);
   S := type_params(obj[1]);
-  TP := CreateTypeParam(T);
-  set_params(TP, S);
-  return TP;
+  set_params(T, S);
+  return T;
 end function;
 
 type_params_overloader := get("type_params");
-type_params_overloader[RngUPol] := type_param_ringmat;
-type_params_overloader[RngMPol] := type_param_ringmat;
-type_params_overloader[ModMatFld] := type_param_ringmat;
-type_params_overloader[ModMatRng] :=  type_param_ringmat;
-type_params_overloader[ModMatFld] := type_param_ringmat;
-type_params_overloader[RngMPolElt] := type_param_ringmat_elt;
-type_params_overloader[RngUPolElt] := type_param_ringmat_elt;
-type_params_overloader[FldFinElt] := type_param_ringmat_elt;
-type_params_overloader[ModMatFldElt] := type_param_ringmat_elt;
-type_params_overloader[ModMatRngElt] := type_param_ringmat_elt;
-type_params_overloader[FldFinElt] := type_param_ringmat_elt;
-type_params_overloader[Mtrx] := type_param_ringmat_elt;
-type_params_overloader[SeqEnum] := type_param_seqenum;
-type_params_overloader[FldFin] := type_param_FF;
+type_params_overloader["RngUPol"] := type_param_ringmat;
+type_params_overloader["RngMPol"] := type_param_ringmat;
+type_params_overloader["ModMatFld"] := type_param_ringmat;
+type_params_overloader["ModMatRng"] :=  type_param_ringmat;
+type_params_overloader["ModMatFld"] := type_param_ringmat;
+type_params_overloader["RngMPolElt"] := type_param_ringmat_elt;
+type_params_overloader["RngUPolElt"] := type_param_ringmat_elt;
+type_params_overloader["FldFinElt"] := type_param_ringmat_elt;
+type_params_overloader["ModMatFldElt"] := type_param_ringmat_elt;
+type_params_overloader["ModMatRngElt"] := type_param_ringmat_elt;
+type_params_overloader["FldFinElt"] := type_param_ringmat_elt;
+type_params_overloader["Mtrx"] := type_param_ringmat_elt;
+type_params_overloader["AlgMatElt"] := type_param_ringmat_elt;
+type_params_overloader["SeqEnum"] := type_param_seqenum;
+type_params_overloader["FldFin"] := type_param_FF;
+type_params_overloader["FldNum"] := type_param_num_field;
+type_params_overloader["RngOrd"] := type_param_order;
+type_params_overloader["RngOrdElt"] := type_param_ringmat_elt;
+type_params_overloader["RngOrdIdl"] := type_param_ideal;
+type_params_overloader["FldNumElt"] := type_param_ringmat_elt;
+type_params_overloader["FldReElt"] := type_param_ringmat_elt;
+type_params_overloader["FldComElt"] := type_param_ringmat_elt;
 set("type_params", type_params_overloader);
 
 
 procedure save_object(s, x)
-  T := Type(x);
-  f:= get("save_object")[T];
+  save_object_overloader := get("save_object");
+  T := SerializationType(x);
+  encoding := encode_type(T);
+  base_encoding := Sprint(Type(x));
+  if encoding in Keys(save_object_overloader) then
+    f:= save_object_overloader[encoding];
+  elif base_encoding in Keys(save_object_overloader) then
+    f:= save_object_overloader[base_encoding];
+  else
+    error("Saving this type is not yet supported");
+  end if;
   f(s,x);
 end procedure;
 
-//procedure save_type_params(s, x)
- // T := Type(x);
- // f:= get("save_type_params")[T];
- // f(s,x);
-//end procedure;
 
 procedure save_object_with_key(s , obj, key)
   set_key(s, key);
@@ -208,16 +293,14 @@ forward save_type_params_with_key;
 forward save_typed_object_with_key;
 
 //Case where S is nothing.
-procedure save_type_params(s, tp)
-  T := tp`type;
-  encode_type:=get("encode_type");
-  if not assigned tp`params then
-    save_object(s, encode_type[T]);
+procedure save_type_params(s, T)
+  if not assigned T`params then
+    save_object(s, encode_type(T));
   else
      begin_dict_node(s);
-        save_object_with_key(s, encode_type[T], "name");
-        params := tp`params;
-        if Type(params) eq TypeParam then
+        save_object_with_key(s, encode_type(T), "name");
+        params := T`params;
+        if Type(params) eq SerCat then
           save_type_params_with_key(s, params, "params");
         elif Type(params) eq Assoc then
           error "Not implemented yet.";
@@ -234,9 +317,8 @@ procedure save_type_params_with_key(s, obj, key)
 end procedure;
 
 function save_as_ref(s, obj) 
-  serialize_id := get("serialize_id");
-  T:= Type(obj);
-  if serialize_id[T] then
+  T:= SerializationType(obj);
+  if serialize_id(T) then
     if assigned obj`uuid then
       ref := obj`uuid;
       if ref notin s`refs then
@@ -258,12 +340,9 @@ function save_as_ref(s, obj)
 end function;
 
 procedure save_typed_object(s, x)
-  encode_type := get("encode_type");
-  serialize_params := get("serialize_params");
-  is_singleton := get("is_singleton");
-  T:=Type(x);
-  if is_singleton[T] then
-    save_object_with_key(s, encode_type[T], type_key);
+  T := SerializationType(x);
+  if is_singleton(T) then
+    save_object_with_key(s, encode_type(T), type_key);
   else
     save_type_params_with_key(s, type_params(x), type_key);
     save_object_with_key(s, x, "data");
@@ -271,11 +350,10 @@ procedure save_typed_object(s, x)
 end procedure;
 
 procedure save_typed_object_with_key(s, x, key)
-  serialize_id := get("serialize_id");
   if not (key eq "") then
     set_key(s, key);
-    T := Type(x);
-    if serialize_id[T] then
+    T := SerializationType(x);
+    if serialize_id(T) then
       ref := save_as_ref(s, x);
       save_object(s, ref);
     else
@@ -303,10 +381,9 @@ end procedure;
 // ** Arrays and Lists **
 
 procedure save_data_seq_enum(s, x)
-  serialize_id := get("serialize_id");
   begin_array_node(s);
     for elem in x do
-      if serialize_id[Type(elem)] then
+      if serialize_id(SerializationType(elem)) then
         ref := save_as_ref(s, elem);
         save_object(s, ref);
       else
@@ -384,7 +461,6 @@ end procedure;
 
 procedure save_alg_mat(s, obj)
    begin_dict_node(s);
-    save_typed_object_with_key(s, BaseRing(obj), "base_ring");
     save_object_with_key(s, Degree(obj), "ncols");
     save_object_with_key(s, Degree(obj), "nrows");
   end_dict_node(s);
@@ -417,6 +493,66 @@ procedure save_Fq_elt(s, obj)
   end if;
 end procedure;
 
+// ** Number fields **
+
+procedure save_num_fld(s, obj)
+  if not IsSimple(obj) then
+    error("Cannot save number fields that are non-simple yet.");
+  end if;
+    begin_dict_node(s);
+      save_object_with_key(s, DefiningPolynomial(obj), "def_pol");
+      save_object_with_key(s, Sprint(Name(obj,1)), "var");
+    end_dict_node(s);
+end procedure;
+
+procedure save_num_fld_elt(s, obj)
+  K := Parent(obj);
+  if not IsSimple(K) then
+    error("Cannot save elements of number fields that are non-simple yet.");
+  end if;
+  R := Parent(DefiningPolynomial(K));
+  polynomial := R!(Eltseq(obj));
+  save_object(s, polynomial);
+end procedure;
+
+procedure save_order(s, obj)
+  K:= NumberField(obj);
+  save_object(s, Basis(obj, K));
+end procedure;
+
+procedure save_order_elt(s, obj)
+  save_object(s, Eltseq(obj));
+end procedure;
+
+procedure save_ideal(s, obj)
+  save_object(s, Basis(obj));
+end procedure;
+
+procedure save_real_fld(s, obj)
+      save_object(s, Precision(obj));
+end procedure;
+
+procedure save_real_fld_elt(s, obj)
+  save_object(s, Sprint(obj));
+end procedure;
+
+procedure save_com_fld(s, obj)
+    begin_dict_node(s);
+      save_object_with_key(s, Precision(obj), "prec");
+
+      //Convoluted way of getting the variable name. It should be possible to do this easier right?
+      var_name:= Split(Sprint(obj.1),"*");
+      Remove(~var_name, 1);
+      var_name := &cat(var_name);
+
+      save_object_with_key(s, var_name, "var");
+    end_dict_node(s);
+end procedure;
+
+procedure save_com_fld_elt(s, obj)
+  save_object(s, [Real(obj), Imaginary(obj)]);
+end procedure;
+
 // ** Elliptic Curves **
 //Probably works. Is untested.
 /*procedure save_elliptic_curve(s, obj)
@@ -426,26 +562,55 @@ end procedure;
   end_dict_node(s);
 end procedure;
 */
+
 //Overloading the save function 
 
-save_obj_overloader[MonStgElt] := save_data_basic;
-save_obj_overloader[BoolElt] := save_data_basic;
-save_obj_overloader[RngIntElt] := save_data_basic;
-save_obj_overloader[FldRatElt] := save_data_q_elt;
-save_obj_overloader[SeqEnum] := save_data_seq_enum;
-save_obj_overloader[Assoc] := save_data_assoc;
-save_obj_overloader[RngMPol] := save_poly_ring;
-save_obj_overloader[RngUPol] := save_poly_ring;
-save_obj_overloader[RngMPolElt] := save_mpoly_elt;
-save_obj_overloader[RngUPolElt] := save_upoly_elt;
-save_obj_overloader[FldFin] := save_Fq;
-save_obj_overloader[FldFinElt] := save_Fq_elt;
-save_obj_overloader[ModMatFld] := save_mat_space;
-save_obj_overloader[ModMatRng] := save_mat_space;
-save_obj_overloader[AlgMat] := save_alg_mat;
-save_obj_overloader[ModMatFldElt] := save_mtrx;
-save_obj_overloader[ModMatRngElt] := save_mtrx;
-save_obj_overloader[Mtrx] := save_mtrx;
+//Basics
+save_obj_overloader["MonStgElt"] := save_data_basic;
+save_obj_overloader["BoolElt"] := save_data_basic;
+
+//Lists
+save_obj_overloader["SeqEnum"] := save_data_seq_enum;
+save_obj_overloader["Assoc"] := save_data_assoc;
+
+//Basis numbers
+save_obj_overloader["RngIntElt"] := save_data_basic;
+save_obj_overloader["FldRatElt"] := save_data_q_elt;
+
+
+//Polynomials
+save_obj_overloader["RngMPol"] := save_poly_ring;
+save_obj_overloader["RngUPol"] := save_poly_ring;
+save_obj_overloader["RngMPolElt"] := save_mpoly_elt;
+save_obj_overloader["RngUPolElt"] := save_upoly_elt;
+
+//Finite Fields
+save_obj_overloader["FldFin"] := save_Fq;
+save_obj_overloader["FldFinElt"] := save_Fq_elt;
+
+//Matrices
+save_obj_overloader["ModMatFld"] := save_mat_space;
+save_obj_overloader["ModMatRng"] := save_mat_space;
+save_obj_overloader["AlgMat"] := save_alg_mat;
+save_obj_overloader["ModMatFldElt"] := save_mtrx;
+save_obj_overloader["ModMatRngElt"] := save_mtrx;
+save_obj_overloader["AlgMatElt"] := save_mtrx;
+save_obj_overloader["Mtrx"] := save_mtrx;
+
+//Number fields
+save_obj_overloader["FldNum"] := save_num_fld;
+save_obj_overloader["FldNumElt"] := save_num_fld_elt;
+save_obj_overloader["RngOrd"] := save_order;
+save_obj_overloader["RngOrdElt"] := save_order_elt;
+save_obj_overloader["RngOrdIdl"] := save_ideal;
+
+//Real and Complex Fields
+save_obj_overloader["FldRe"] := save_real_fld;
+save_obj_overloader["FldReElt"] := save_real_fld_elt;
+save_obj_overloader["FldCom"] := save_com_fld;
+save_obj_overloader["FldComElt"] := save_com_fld_elt;
+
+//Curves
 //save_obj_overloader[CrvEll] := save_elliptic_curve;
 
 set("save_object", save_obj_overloader);
@@ -453,13 +618,11 @@ set("save_object", save_obj_overloader);
 //Overloading saving with parameters
 
 procedure save_type_param_ringmat_elt(s, obj)
-  T := Type(obj);
-  encode_type := get("encode_type");
-  serialize_id := get("serialize_id");
+  T := SerializationType(obj);
   begin_dict_node(s);
-    save_object_with_key(s, encode_type[T], "name");
+    save_object_with_key(s, encode_type(T), "name");
     parent_obj := Parent(obj);
-    if serialize_id[Type(parent_obj)] then
+    if serialize_id(SerializationType(parent_obj)) then
       parent_ref := save_as_ref(s, parent_obj);
       save_object_with_key(s, parent_ref, "params");
     else
@@ -471,27 +634,24 @@ end procedure;
 //Might have problems with empty seqenum
 
 procedure save_type_param_seqenum(s, obj)
-  T := Type(obj);
-  encode_type := get("encode_type");
-  serialize_params := get("serialize_params");
+  T := SerializationType(obj);
   begin_dict_node(s);
-    save_object_with_key(s, encode_type[T], "name");
-    
-    if obj ne [] and serialize_params[Type(obj[1])] then
+    save_object_with_key(s, encode_type(T), "name");
+    if obj ne [] and serialize_params(SerializationType(obj[1])) then
       save_type_params_with_key(s, type_params(obj[1]), "params");
     else
-      save_object_with_key(s, encode_type[Type(obj[1])], "params");
+      save_object_with_key(s, encode_type(SerializationType(obj[1])), "params");
     end if;
   end_dict_node(s);
 end procedure;
 
-save_type_params_overloader[RngMPolElt] := save_type_param_ringmat_elt;
-save_type_params_overloader[RngUPolElt] := save_type_param_ringmat_elt;
-save_type_params_overloader[FldFinElt] := save_type_param_ringmat_elt;
-save_type_params_overloader[ModMatFldElt] := save_type_param_ringmat_elt;
-save_type_params_overloader[ModMatRngElt] := save_type_param_ringmat_elt;
-save_type_params_overloader[Mtrx] := save_type_param_ringmat_elt;
-save_type_params_overloader[SeqEnum] := save_type_param_seqenum;
+//save_type_params_overloader[RngMPolElt] := save_type_param_ringmat_elt;
+//save_type_params_overloader[RngUPolElt] := save_type_param_ringmat_elt;
+//save_type_params_overloader[FldFinElt] := save_type_param_ringmat_elt;
+//save_type_params_overloader[ModMatFldElt] := save_type_param_ringmat_elt;
+//save_type_params_overloader[ModMatRngElt] := save_type_param_ringmat_elt;
+//save_type_params_overloader[Mtrx] := save_type_param_ringmat_elt;
+//save_type_params_overloader[SeqEnum] := save_type_param_seqenum;
 
 set("save_type_params", save_type_params_overloader);
 
@@ -509,11 +669,10 @@ intrinsic save_mardi_json(file::MonStgElt, obj::Any)
     
     //Save the object
     save_typed_object(s, obj);
-    T := Type(obj);
-    serialize_id := get("serialize_id");
+    T := SerializationType(obj);
     
     //Store the id if serialize_id is true
-    if serialize_id[T] then
+    if serialize_id(T) then
       if assigned obj`uuid then
         ref := obj`uuid;
       else

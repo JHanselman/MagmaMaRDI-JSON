@@ -1,1 +1,1 @@
-{"_ns":{"Oscar":["https://github.com/oscar-system/Oscar.jl","1.7.0"]},"_type":{"name":"Vector","params":{"name":"Vector","params":"ZZRingElem"}},"data":[["1","2"],["3","4"]]}
+{"_ns":{"Oscar":["https://github.com/oscar-system/Oscar.jl","1.7.0"]},"_type":{"name":"Vector","params":"ZZRingElem"},"data":["1","2"]}
