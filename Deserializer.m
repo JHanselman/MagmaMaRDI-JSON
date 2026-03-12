@@ -552,6 +552,8 @@ function load_simple_num_fld_elt(s, parent)
   return Evaluate(load_object(s, tp), a);
 end function;
 
+
+//The do not necessarily match up with Oscar
 function load_order(s, base_ring)
   tp := SerializationType(SeqEnum);
   coeff_tp:=SerializationType(ElementType(base_ring));

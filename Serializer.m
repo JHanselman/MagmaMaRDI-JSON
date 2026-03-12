@@ -42,9 +42,9 @@ end intrinsic;
 intrinsic Print(X::SerCat)
 {Print X}
 if assigned X`params then
-  print "TypeParam object", X`type,",",X`params;
+  print "Serialization Type", X`type,",",X`params;
 else
-  print "TypeParam object", X`type, ", undefined";
+  print "Serialization Type", X`type, ", undefined";
 end if;
 end intrinsic;
 
@@ -515,6 +515,9 @@ procedure save_num_fld_elt(s, obj)
   save_object(s, polynomial);
 end procedure;
 
+
+//The methods below do not necessarily match up with Oscar.
+
 procedure save_order(s, obj)
   K:= NumberField(obj);
   save_object(s, Basis(obj, K));
@@ -614,47 +617,6 @@ save_obj_overloader["FldComElt"] := save_com_fld_elt;
 //save_obj_overloader[CrvEll] := save_elliptic_curve;
 
 set("save_object", save_obj_overloader);
-
-//Overloading saving with parameters
-
-procedure save_type_param_ringmat_elt(s, obj)
-  T := SerializationType(obj);
-  begin_dict_node(s);
-    save_object_with_key(s, encode_type(T), "name");
-    parent_obj := Parent(obj);
-    if serialize_id(SerializationType(parent_obj)) then
-      parent_ref := save_as_ref(s, parent_obj);
-      save_object_with_key(s, parent_ref, "params");
-    else
-      save_typed_object_with_key(s, parent_obj, "params");
-    end if;
-  end_dict_node(s);
-end procedure;
-
-//Might have problems with empty seqenum
-
-procedure save_type_param_seqenum(s, obj)
-  T := SerializationType(obj);
-  begin_dict_node(s);
-    save_object_with_key(s, encode_type(T), "name");
-    if obj ne [] and serialize_params(SerializationType(obj[1])) then
-      save_type_params_with_key(s, type_params(obj[1]), "params");
-    else
-      save_object_with_key(s, encode_type(SerializationType(obj[1])), "params");
-    end if;
-  end_dict_node(s);
-end procedure;
-
-//save_type_params_overloader[RngMPolElt] := save_type_param_ringmat_elt;
-//save_type_params_overloader[RngUPolElt] := save_type_param_ringmat_elt;
-//save_type_params_overloader[FldFinElt] := save_type_param_ringmat_elt;
-//save_type_params_overloader[ModMatFldElt] := save_type_param_ringmat_elt;
-//save_type_params_overloader[ModMatRngElt] := save_type_param_ringmat_elt;
-//save_type_params_overloader[Mtrx] := save_type_param_ringmat_elt;
-//save_type_params_overloader[SeqEnum] := save_type_param_seqenum;
-
-set("save_type_params", save_type_params_overloader);
-
 
 
 // Define save function
